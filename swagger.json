@@ -15,30 +15,6 @@
         ]
       }
     },
-    "/api/webhook": {
-      "post": {
-        "operationId": "AppController_handlePaymentWebhook",
-        "parameters": [
-          {
-            "name": "x-callback-token",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Webhook processed successfully"
-          }
-        },
-        "summary": "Handle Xendit payment webhook",
-        "tags": [
-          "App"
-        ]
-      }
-    },
     "/api/users": {
       "get": {
         "operationId": "UsersController_findAll",
@@ -506,6 +482,46 @@
         ]
       }
     },
+    "/api/xendit/webhook": {
+      "post": {
+        "operationId": "XenditController_handlePaymentWebhook",
+        "parameters": [
+          {
+            "name": "x-callback-token",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XenditWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          },
+          "400": {
+            "description": "Invalid payload"
+          },
+          "401": {
+            "description": "Invalid token"
+          }
+        },
+        "summary": "Handle Xendit payment webhook",
+        "tags": [
+          "Xendit"
+        ]
+      }
+    },
     "/api/orders": {
       "post": {
         "operationId": "OrdersController_create",
@@ -604,35 +620,6 @@
           }
         ],
         "summary": "Get a specific order by ID",
-        "tags": [
-          "Orders"
-        ]
-      }
-    },
-    "/api/orders/webhook": {
-      "post": {
-        "operationId": "OrdersController_handlePaymentWebhook",
-        "parameters": [
-          {
-            "name": "x-callback-token",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Webhook processed successfully"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Handle Xendit payment webhook",
         "tags": [
           "Orders"
         ]
@@ -1011,6 +998,10 @@
         "properties": {}
       },
       "UpdateEventDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "XenditWebhookDto": {
         "type": "object",
         "properties": {}
       },

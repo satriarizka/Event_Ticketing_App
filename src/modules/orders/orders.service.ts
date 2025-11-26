@@ -5,33 +5,25 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { Order } from '../../entities/order.entity';
 import { Event } from '../../entities/event.entity';
-import { Ticket } from '../../entities/ticket.entity';
 import { User } from '../../entities/user.entity';
 import { XenditService } from '../xendit/xendit.service';
 import { XenditInvoiceResponse } from '../xendit/xendit.types';
 import { v4 as uuidv4 } from 'uuid';
-import * as QRCode from 'qrcode';
-import * as fs from 'fs';
-import { join } from 'path';
-import PDFDocument from 'pdfkit';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isValidUUID } from 'src/common/utils/validation.utils';
+import { TicketsService } from '../tickets/tickets.service';
 
 @Injectable()
 export class OrdersService {
     private readonly logger = new Logger(OrdersService.name);
-    private readonly uploadsDir = join(process.cwd(), 'uploads');
 
     constructor(
         @InjectRepository(Order) private ordersRepo: Repository<Order>,
         @InjectRepository(Event) private eventsRepo: Repository<Event>,
-        @InjectRepository(Ticket) private ticketsRepo: Repository<Ticket>,
         private xenditService: XenditService,
         private readonly notificationsService: NotificationsService,
-    ) {
-        if (!fs.existsSync(this.uploadsDir)) {
-            fs.mkdirSync(this.uploadsDir, { recursive: true });
-        }
-    }
+        private readonly ticketsService: TicketsService,
+    ) {}
 
     async create(createOrderDto: CreateOrderDto, user: User): Promise<Order> {
         const { id: userId } = user;
@@ -126,7 +118,7 @@ export class OrdersService {
         status: PaymentStatus,
         paymentRef?: string,
     ): Promise<void> {
-        if (!this.isValidUUID(orderId)) {
+        if (!isValidUUID(orderId)) {
             this.logger.warn(
                 `Webhook Error: Invalid UUID format for order ID: ${orderId}`,
             );
@@ -161,7 +153,7 @@ export class OrdersService {
     }
 
     async createTicketsForPaidOrder(orderId: string): Promise<void> {
-        if (!this.isValidUUID(orderId)) {
+        if (!isValidUUID(orderId)) {
             this.logger.warn(
                 `Invalid UUID format for order ID: ${orderId}. Skipping ticket creation.`,
             );
@@ -184,136 +176,16 @@ export class OrdersService {
         }
 
         try {
-            const tickets = [];
-            for (let i = 0; i < order.quantity; i++) {
-                const ticket = new Ticket();
-                ticket.id = uuidv4();
-                ticket.ticketCode = this.generateTicketCode();
-                ticket.event = order.event;
-                ticket.order = order;
-                ticket.isUsed = false;
-                ticket.issuedAt = new Date();
-
-                const qrCodeFileName = await this.generateQRCode(
-                    ticket.ticketCode,
-                );
-                ticket.qrCodeUrl = qrCodeFileName;
-
-                const pdfFileName = await this.generatePDF(ticket, order.user);
-                ticket.pdfUrl = pdfFileName;
-
-                tickets.push(ticket);
-            }
-
-            await this.ticketsRepo.save(tickets);
-
-            await this.notificationsService.sendTicketEmail(
-                order.user,
-                order,
-                tickets,
-            );
-
-            await this.notificationsService.scheduleEventReminder(
-                order.user,
-                order.event,
-            );
-
             this.logger.log(
-                `Created ${tickets.length} tickets for order ${orderId}`,
+                `Delegating ticket creation for order ${orderId} to TicketsService.`,
             );
+            await this.ticketsService.createTicketsForOrder(order);
         } catch (error) {
             this.logger.error(
                 `Failed to create tickets for order ${orderId}:`,
                 error,
             );
         }
-    }
-
-    private async generateQRCode(ticketCode: string): Promise<string> {
-        try {
-            const qrCodeFileName = `qr-${ticketCode}.png`;
-            const qrCodePath = join(this.uploadsDir, qrCodeFileName);
-
-            await QRCode.toFile(qrCodePath, ticketCode, {
-                width: 200,
-                margin: 1,
-                color: {
-                    dark: '#000000',
-                    light: '#FFFFFF',
-                },
-            });
-
-            this.logger.log(`Generated QR code for ticket ${ticketCode}`);
-            return qrCodeFileName;
-        } catch (error) {
-            this.logger.error(
-                `Failed to generate QR code for ticket ${ticketCode}:`,
-                error,
-            );
-            throw error;
-        }
-    }
-
-    private async generatePDF(ticket: Ticket, user: any): Promise<string> {
-        return new Promise((resolve, reject) => {
-            try {
-                const pdfFileName = `ticket-${ticket.ticketCode}.pdf`;
-                const pdfPath = join(this.uploadsDir, pdfFileName);
-
-                const doc = new PDFDocument();
-                const stream = fs.createWriteStream(pdfPath);
-
-                doc.pipe(stream);
-
-                doc.fontSize(20).text('Event Ticket', { align: 'center' });
-                doc.moveDown();
-
-                doc.fontSize(14).text(`Event: ${ticket.event.title}`);
-                doc.text(
-                    `Date: ${new Date(ticket.event.startDate).toLocaleDateString()}`,
-                );
-                doc.text(
-                    `Time: ${new Date(ticket.event.startDate).toLocaleTimeString()}`,
-                );
-                doc.text(`Location: ${ticket.event.location}`);
-                doc.moveDown();
-
-                doc.text(`Ticket Code: ${ticket.ticketCode}`);
-                doc.text(`Attendee: ${user.name || user.email}`);
-                doc.moveDown();
-
-                const qrCodePath = join(this.uploadsDir, ticket.qrCodeUrl);
-                if (fs.existsSync(qrCodePath)) {
-                    doc.image(qrCodePath, {
-                        fit: [150, 150],
-                        align: 'center',
-                    });
-                }
-
-                doc.end();
-
-                stream.on('finish', () => {
-                    this.logger.log(
-                        `Generated PDF for ticket ${ticket.ticketCode}`,
-                    );
-                    resolve(pdfFileName);
-                });
-
-                stream.on('error', (error) => {
-                    this.logger.error(
-                        `Failed to generate PDF for ticket ${ticket.ticketCode}:`,
-                        error,
-                    );
-                    reject(error);
-                });
-            } catch (error) {
-                this.logger.error(
-                    `Failed to generate PDF for ticket ${ticket.ticketCode}:`,
-                    error,
-                );
-                reject(error);
-            }
-        });
     }
 
     async findOrderById(id: string): Promise<Order> {
@@ -343,17 +215,5 @@ export class OrdersService {
         }
 
         return event;
-    }
-
-    private generateTicketCode(): string {
-        const timestamp = Date.now().toString(36);
-        const randomPart = Math.random().toString(36).substring(2, 8);
-        return `TKT-${timestamp}-${randomPart}`.toUpperCase();
-    }
-
-    private isValidUUID(uuid: string): boolean {
-        const uuidRegex =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        return uuidRegex.test(uuid);
     }
 }

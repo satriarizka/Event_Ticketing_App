@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Xendit, XenditOpts } from 'xendit-node';
 import { InvoiceApi } from 'xendit-node/invoice/apis';
 import { CreateInvoiceRequest as XenditCreateInvoiceRequest } from 'xendit-node/invoice/models';
 import { XenditInvoiceResponse, CreateInvoiceRequest } from './xendit.types';
+import { OrdersService } from '../orders/orders.service';
+import { XenditWebhookDto } from './dto/xendit-webhook.dto';
+import { PaymentStatus } from 'src/common/enums/payment-status.enum';
+import { XenditWebhookStatus } from 'src/common/enums/status-xendit.enum';
 
 @Injectable()
 export class XenditService {
@@ -12,7 +16,11 @@ export class XenditService {
     private readonly invoiceApi: InvoiceApi;
     private readonly webhookToken: string;
 
-    constructor(private configService: ConfigService) {
+    constructor(
+        private configService: ConfigService,
+        @Inject(forwardRef(() => OrdersService))
+        private readonly ordersService: OrdersService,
+    ) {
         const xenditOptions: XenditOpts = {
             secretKey: this.configService.get<string>('XENDIT_SECRET_KEY'),
         };
@@ -188,5 +196,62 @@ export class XenditService {
             items: invoiceResponse.items,
             fees: invoiceResponse.fees,
         };
+    }
+
+    async processWebhook(
+        payload: XenditWebhookDto,
+        callbackToken: string,
+    ): Promise<void> {
+        // Poin 5: Validasi callback token ada di level service
+        if (callbackToken !== this.webhookToken) {
+            this.logger.error('Webhook received with invalid token.');
+            // Gunakan exception NestJS, jangan return res.send()
+            throw new UnauthorizedException('Invalid token');
+        }
+
+        this.logger.log(
+            `Processing webhook for order ${payload.external_id} with status ${payload.status}`,
+        );
+
+        // Poin 1 & 2: Validasi external_id & UUID sudah tidak perlu,
+        // DTO (@IsUUID, @IsNotEmpty) sudah menanganinya.
+
+        let newStatus: PaymentStatus;
+
+        // Poin 3 & 4: Logika mapping & menggunakan switch case
+        switch (payload.status) {
+            case XenditWebhookStatus.PAID:
+                newStatus = PaymentStatus.PAID;
+                break;
+            case XenditWebhookStatus.EXPIRED:
+                newStatus = PaymentStatus.EXPIRED;
+                break;
+            case XenditWebhookStatus.PENDING:
+                newStatus = PaymentStatus.PENDING;
+                break;
+            default:
+                // Status lain yang valid (misal 'FAILED') tapi tidak kita tangani
+                this.logger.log(
+                    `Received unhandled status: ${payload.status} for order ${payload.external_id}`,
+                );
+                return; // Selesai, tidak perlu proses lebih lanjut
+        }
+
+        // Poin 3: Logika pemanggilan service lain
+        await this.ordersService.updateOrderStatus(
+            payload.external_id,
+            newStatus,
+            payload.id,
+        );
+
+        if (newStatus === PaymentStatus.PAID) {
+            this.logger.log(
+                `Payment successful for order ${payload.external_id}. Creating tickets.`,
+            );
+
+            await this.ordersService.createTicketsForPaidOrder(
+                payload.external_id,
+            );
+        }
     }
 }

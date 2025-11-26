@@ -12,8 +12,6 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import typeormConfig from './config/typeorm.config';
 import { XenditModule } from './modules/xendit/xendit.module';
-import { Order } from './entities/order.entity';
-import { Notification } from './entities/notification.entity';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -36,8 +34,6 @@ import { ScheduleModule } from '@nestjs/schedule';
         EventsModule,
 
         XenditModule,
-
-        TypeOrmModule.forFeature([Order, Notification]),
 
         ScheduleModule.forRoot(),
 

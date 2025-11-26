@@ -13,6 +13,8 @@ import * as QRCode from 'qrcode';
 import * as fs from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { NotificationsService } from '../notifications/notifications.service';
+import { User } from 'src/entities/user.entity';
 
 @Injectable()
 export class TicketsService {
@@ -21,6 +23,7 @@ export class TicketsService {
 
     constructor(
         @InjectRepository(Ticket) private ticketsRepo: Repository<Ticket>,
+        private readonly notificationsService: NotificationsService,
     ) {
         if (!fs.existsSync(this.uploadsDir)) {
             fs.mkdirSync(this.uploadsDir, { recursive: true });
@@ -32,6 +35,13 @@ export class TicketsService {
             this.logger.log(
                 `Creating ${order.quantity} tickets for order ${order.id}`,
             );
+
+            if (!order.user || !order.event) {
+                this.logger.error(
+                    `Order ${order.id} is missing user or event relations.`,
+                );
+                throw new Error('Order data is incomplete.');
+            }
 
             const tickets = [];
             for (let i = 0; i < order.quantity; i++) {
@@ -59,6 +69,17 @@ export class TicketsService {
                 `Successfully created ${savedTickets.length} tickets for order ${order.id}`,
             );
 
+            await this.notificationsService.sendTicketEmail(
+                order.user,
+                order,
+                savedTickets,
+            );
+
+            await this.notificationsService.scheduleEventReminder(
+                order.user,
+                order.event,
+            );
+
             return savedTickets;
         } catch (error) {
             this.logger.error(
@@ -69,7 +90,7 @@ export class TicketsService {
         }
     }
 
-    async generateQRCode(ticketCode: string): Promise<string> {
+    private async generateQRCode(ticketCode: string): Promise<string> {
         try {
             const qrCodeFileName = `qr-${ticketCode}.png`;
             const qrCodePath = join(this.uploadsDir, qrCodeFileName);
@@ -77,10 +98,7 @@ export class TicketsService {
             await QRCode.toFile(qrCodePath, ticketCode, {
                 width: 200,
                 margin: 1,
-                color: {
-                    dark: '#000000',
-                    light: '#FFFFFF',
-                },
+                color: { dark: '#000000', light: '#FFFFFF' },
             });
 
             this.logger.log(`Generated QR code for ticket ${ticketCode}`);
@@ -94,7 +112,7 @@ export class TicketsService {
         }
     }
 
-    async generatePDF(ticket: Ticket, user: any): Promise<string> {
+    private async generatePDF(ticket: Ticket, user: User): Promise<string> {
         return new Promise((resolve, reject) => {
             try {
                 const pdfFileName = `ticket-${ticket.ticketCode}.pdf`;
@@ -102,24 +120,17 @@ export class TicketsService {
 
                 const doc = new PDFDocument();
                 const stream = fs.createWriteStream(pdfPath);
-
                 doc.pipe(stream);
 
                 doc.fontSize(20).text('Event Ticket', { align: 'center' });
                 doc.moveDown();
-
                 doc.fontSize(14).text(`Event: ${ticket.event.title}`);
-                doc.text(
-                    `Date: ${new Date(ticket.event.startDate).toLocaleDateString()}`,
-                );
-                doc.text(
-                    `Time: ${new Date(ticket.event.startDate).toLocaleTimeString()}`,
-                );
+                doc.text(`Date: ${new Date(ticket.event.startDate).toLocaleDateString()}`);
+                doc.text(`Time: ${new Date(ticket.event.startDate).toLocaleTimeString()}`);
                 doc.text(`Location: ${ticket.event.location}`);
                 doc.moveDown();
-
                 doc.text(`Ticket Code: ${ticket.ticketCode}`);
-                doc.text(`Attendee: ${user.name || user.email}`);
+                doc.text(`Attendee: ${user.name || user.email}`); // Gunakan user dari order
                 doc.moveDown();
 
                 const qrCodePath = join(this.uploadsDir, ticket.qrCodeUrl);
@@ -129,23 +140,13 @@ export class TicketsService {
                         align: 'center',
                     });
                 }
-
                 doc.end();
 
                 stream.on('finish', () => {
-                    this.logger.log(
-                        `Generated PDF for ticket ${ticket.ticketCode}`,
-                    );
+                    this.logger.log(`Generated PDF for ticket ${ticket.ticketCode}`);
                     resolve(pdfFileName);
                 });
-
-                stream.on('error', (error) => {
-                    this.logger.error(
-                        `Failed to generate PDF for ticket ${ticket.ticketCode}:`,
-                        error,
-                    );
-                    reject(error);
-                });
+                stream.on('error', (error) => reject(error));
             } catch (error) {
                 this.logger.error(
                     `Failed to generate PDF for ticket ${ticket.ticketCode}:`,
