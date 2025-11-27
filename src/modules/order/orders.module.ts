@@ -5,8 +5,8 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { Event } from 'src/entities/event.entity';
 import { XenditModule } from '../xendit/xendit.module';
-import { TicketsModule } from '../tickets/tickets.module';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { TicketsModule } from '../ticket/tickets.module';
+import { NotificationsModule } from '../notification/notifications.module';
 
 @Module({
     imports: [

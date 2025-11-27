@@ -1,19 +1,22 @@
+import { Request } from 'express';
 import { User } from 'src/entities/user.entity';
+
+export type SanitizedUser = Omit<User, 'passwordHash'>;
+
+export interface JwtPayload {
+    sub: string;
+    email: string;
+    role: string;
+}
 
 export interface RegisterResponse {
     message: string;
-    user: User;
+    user: SanitizedUser;
 }
 
 export interface LoginResponse {
     access_token: string;
-    user: User;
-}
-
-export interface JwtPayload {
-    sub: string;
-    role: string;
-    email: string;
+    user: SanitizedUser;
 }
 
 export interface RequestWithUser extends Request {

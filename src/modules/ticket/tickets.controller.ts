@@ -3,20 +3,25 @@ import {
     Get,
     Post,
     Param,
+    Query,
     UseGuards,
     Res,
     NotFoundException,
     Logger,
     BadRequestException,
+    ParseIntPipe,
+    DefaultValuePipe,
 } from '@nestjs/common';
 import {
     ApiTags,
     ApiBearerAuth,
     ApiOperation,
     ApiResponse,
+    ApiQuery,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TicketsService } from './tickets.service';
+import { TicketsValidationService } from './tickets.validation.service';
 import { Ticket } from '../../entities/ticket.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -30,17 +35,65 @@ import { join } from 'path';
 export class TicketsController {
     private readonly logger = new Logger(TicketsController.name);
 
-    constructor(private readonly ticketsService: TicketsService) {}
+    constructor(
+        private readonly ticketsService: TicketsService,
+        private readonly ticketsValidationService: TicketsValidationService,
+    ) {}
 
     @Get()
-    @ApiOperation({ summary: 'Get all tickets for the current user' })
+    @ApiOperation({
+        summary: 'Get all tickets for the current user with pagination',
+    })
+    @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
     @ApiResponse({
         status: 200,
         description: 'Tickets retrieved successfully',
-        type: [Ticket],
+        schema: {
+            type: 'object',
+            properties: {
+                data: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/Ticket' },
+                },
+                meta: {
+                    type: 'object',
+                    properties: {
+                        total: { type: 'number' },
+                        page: { type: 'number' },
+                        limit: { type: 'number' },
+                        totalPages: { type: 'number' },
+                    },
+                },
+            },
+        },
     })
-    async findAll(@CurrentUser() user: User): Promise<Ticket[]> {
-        return this.ticketsService.getTicketsByUserId(user.id);
+    async findAll(
+        @CurrentUser() user: User,
+        @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+        @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    ): Promise<{
+        data: Ticket[];
+        meta: {
+            total: number;
+            page: number;
+            limit: number;
+            totalPages: number;
+        };
+    }> {
+        // Validate pagination parameters
+        if (page < 1) {
+            throw new BadRequestException('Page must be greater than 0');
+        }
+        if (limit < 1 || limit > 100) {
+            throw new BadRequestException('Limit must be between 1 and 100');
+        }
+
+        return this.ticketsService.getTicketsByUserIdWithPagination(
+            user.id,
+            page,
+            limit,
+        );
     }
 
     @Get('order/:orderId')
@@ -55,6 +108,29 @@ export class TicketsController {
         @CurrentUser() user: User,
     ): Promise<Ticket[]> {
         return this.ticketsService.getTicketsByOrderId(orderId, user.id);
+    }
+
+    @Get('scan/:ticketCode')
+    @ApiOperation({ summary: 'Scan a ticket by ticket code' })
+    @ApiResponse({
+        status: 200,
+        description: 'Ticket found',
+        type: Ticket,
+    })
+    async scanTicket(
+        @Param('ticketCode') ticketCode: string,
+        @CurrentUser() user: User,
+    ): Promise<Ticket> {
+        const ticket =
+            await this.ticketsValidationService.validateTicketCode(ticketCode);
+
+        if (ticket.order.user.id !== user.id) {
+            throw new NotFoundException(
+                `Ticket with code ${ticketCode} not found`,
+            );
+        }
+
+        return ticket;
     }
 
     @Get(':id')
@@ -81,35 +157,12 @@ export class TicketsController {
         return ticket;
     }
 
-    @Get('download/:ticketId')
-    @ApiOperation({ summary: 'Download a ticket PDF' })
-    @ApiResponse({ status: 200, description: 'PDF downloaded successfully' })
-    async downloadTicket(
-        @Param('ticketId') ticketId: string,
-        @CurrentUser() user: User,
-        @Res() res: Response,
-    ): Promise<void> {
-        const ticket = await this.ticketsService.getTicketById(ticketId);
-
-        if (!ticket) {
-            throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
-        }
-
-        if (ticket.order.user.id !== user.id) {
-            throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
-        }
-
-        if (!ticket.pdfUrl) {
-            throw new NotFoundException(`PDF for ticket ${ticketId} not found`);
-        }
-
-        const pdfPath = join(process.cwd(), 'uploads', ticket.pdfUrl);
-        res.download(pdfPath, `ticket-${ticket.ticketCode}.pdf`);
-    }
-
     @Get(':id/qr')
     @ApiOperation({ summary: 'Get QR code for a ticket' })
-    @ApiResponse({ status: 200, description: 'QR code retrieved successfully' })
+    @ApiResponse({
+        status: 200,
+        description: 'QR code retrieved successfully',
+    })
     async getQRCode(
         @Param('id') id: string,
         @CurrentUser() user: User,
@@ -135,7 +188,10 @@ export class TicketsController {
 
     @Get(':id/pdf')
     @ApiOperation({ summary: 'Get PDF for a ticket' })
-    @ApiResponse({ status: 200, description: 'PDF retrieved successfully' })
+    @ApiResponse({
+        status: 200,
+        description: 'PDF retrieved successfully',
+    })
     async getPDF(
         @Param('id') id: string,
         @CurrentUser() user: User,
@@ -159,6 +215,35 @@ export class TicketsController {
         res.sendFile(pdfPath);
     }
 
+    @Get('download/:ticketId')
+    @ApiOperation({ summary: 'Download a ticket PDF' })
+    @ApiResponse({
+        status: 200,
+        description: 'PDF downloaded successfully',
+    })
+    async downloadTicket(
+        @Param('ticketId') ticketId: string,
+        @CurrentUser() user: User,
+        @Res() res: Response,
+    ): Promise<void> {
+        const ticket = await this.ticketsService.getTicketById(ticketId);
+
+        if (!ticket) {
+            throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
+        }
+
+        if (ticket.order.user.id !== user.id) {
+            throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
+        }
+
+        if (!ticket.pdfUrl) {
+            throw new NotFoundException(`PDF for ticket ${ticketId} not found`);
+        }
+
+        const pdfPath = join(process.cwd(), 'uploads', ticket.pdfUrl);
+        res.download(pdfPath, `ticket-${ticket.ticketCode}.pdf`);
+    }
+
     @Post(':id/validate')
     @ApiOperation({ summary: 'Validate a ticket (mark as used)' })
     @ApiResponse({
@@ -171,18 +256,11 @@ export class TicketsController {
         @CurrentUser() user: User,
     ): Promise<{ message: string }> {
         try {
-            const ticket = await this.ticketsService.getTicketById(id);
-
-            if (!ticket) {
-                throw new NotFoundException(`Ticket with ID ${id} not found`);
-            }
+            const ticket =
+                await this.ticketsValidationService.validateTicket(id);
 
             if (ticket.order.user.id !== user.id) {
                 throw new NotFoundException(`Ticket with ID ${id} not found`);
-            }
-
-            if (ticket.isUsed) {
-                throw new BadRequestException(`Ticket ${id} is already used`);
             }
 
             await this.ticketsService.markTicketAsUsed(id);
@@ -207,22 +285,19 @@ export class TicketsController {
         type: 'object',
     })
     async checkTicket(
-        @Param('path') id: string,
+        @Param('id') id: string,
         @CurrentUser() user: User,
     ): Promise<{ isValid: boolean; isUsed: boolean }> {
         try {
-            const ticket = await this.ticketsService.getTicketById(id);
-
-            if (!ticket) {
-                return { isValid: false, isUsed: false };
-            }
+            const ticket = await this.ticketsValidationService.checkTicket(id);
 
             if (ticket.order.user.id !== user.id) {
                 return { isValid: false, isUsed: false };
             }
 
             return { isValid: true, isUsed: ticket.isUsed };
-        } catch (error) {
+        } catch {
+            // Error is intentionally ignored - return invalid status
             return { isValid: false, isUsed: false };
         }
     }

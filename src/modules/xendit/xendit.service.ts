@@ -4,7 +4,7 @@ import { Xendit, XenditOpts } from 'xendit-node';
 import { InvoiceApi } from 'xendit-node/invoice/apis';
 import { CreateInvoiceRequest as XenditCreateInvoiceRequest } from 'xendit-node/invoice/models';
 import { XenditInvoiceResponse, CreateInvoiceRequest } from './xendit.types';
-import { OrdersService } from '../orders/orders.service';
+import { OrdersService } from '../order/orders.service';
 import { XenditWebhookDto } from './dto/xendit-webhook.dto';
 import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { XenditWebhookStatus } from 'src/common/enums/status-xendit.enum';

@@ -13,7 +13,7 @@ import * as QRCode from 'qrcode';
 import * as fs from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsService } from '../notification/notifications.service';
 import { User } from 'src/entities/user.entity';
 
 @Injectable()
@@ -43,36 +43,55 @@ export class TicketsService {
                 throw new Error('Order data is incomplete.');
             }
 
-            const tickets = [];
+            // Create tickets array with proper typing
+            const ticketsToCreate: Partial<Ticket>[] = [];
+
             for (let i = 0; i < order.quantity; i++) {
-                const ticket = new Ticket();
-                ticket.id = uuidv4();
-                ticket.ticketCode = this.generateTicketCode();
-                ticket.event = order.event;
-                ticket.order = order;
-                ticket.isUsed = false;
-                ticket.issuedAt = new Date();
+                const ticketCode = this.generateTicketCode();
 
-                const qrCodeFileName = await this.generateQRCode(
-                    ticket.ticketCode,
-                );
-                ticket.qrCodeUrl = qrCodeFileName;
+                // Generate QR code
+                const qrCodeFileName = await this.generateQRCode(ticketCode);
 
-                const pdfFileName = await this.generatePDF(ticket, order.user);
-                ticket.pdfUrl = pdfFileName;
+                // Create ticket object
+                const ticketData: Partial<Ticket> = {
+                    id: uuidv4(),
+                    ticketCode,
+                    event: order.event,
+                    order: order,
+                    isUsed: false,
+                    issuedAt: new Date(),
+                    qrCodeUrl: qrCodeFileName,
+                };
 
-                tickets.push(ticket);
+                ticketsToCreate.push(ticketData);
             }
 
-            const savedTickets = await this.ticketsRepo.save(tickets);
-            this.logger.log(
-                `Successfully created ${savedTickets.length} tickets for order ${order.id}`,
+            // Save all tickets at once
+            const savedTickets = await this.ticketsRepo.save(
+                ticketsToCreate as Ticket[],
             );
 
+            // Generate PDFs for all tickets
+            const pdfPromises = savedTickets.map(async (ticket) => {
+                const pdfFileName = await this.generatePDF(ticket, order.user);
+                ticket.pdfUrl = pdfFileName;
+                return ticket;
+            });
+
+            const ticketsWithPdf = await Promise.all(pdfPromises);
+
+            // Save tickets with PDF URLs
+            const finalTickets = await this.ticketsRepo.save(ticketsWithPdf);
+
+            this.logger.log(
+                `Successfully created ${finalTickets.length} tickets for order ${order.id}`,
+            );
+
+            // Send notifications
             await this.notificationsService.sendTicketEmail(
                 order.user,
                 order,
-                savedTickets,
+                finalTickets,
             );
 
             await this.notificationsService.scheduleEventReminder(
@@ -80,7 +99,7 @@ export class TicketsService {
                 order.event,
             );
 
-            return savedTickets;
+            return finalTickets;
         } catch (error) {
             this.logger.error(
                 `Failed to create tickets for order ${order.id}:`,
@@ -113,7 +132,7 @@ export class TicketsService {
     }
 
     private async generatePDF(ticket: Ticket, user: User): Promise<string> {
-        return new Promise((resolve, reject) => {
+        return new Promise<string>((resolve, reject) => {
             try {
                 const pdfFileName = `ticket-${ticket.ticketCode}.pdf`;
                 const pdfPath = join(this.uploadsDir, pdfFileName);
@@ -125,12 +144,16 @@ export class TicketsService {
                 doc.fontSize(20).text('Event Ticket', { align: 'center' });
                 doc.moveDown();
                 doc.fontSize(14).text(`Event: ${ticket.event.title}`);
-                doc.text(`Date: ${new Date(ticket.event.startDate).toLocaleDateString()}`);
-                doc.text(`Time: ${new Date(ticket.event.startDate).toLocaleTimeString()}`);
+                doc.text(
+                    `Date: ${new Date(ticket.event.startDate).toLocaleDateString()}`,
+                );
+                doc.text(
+                    `Time: ${new Date(ticket.event.startDate).toLocaleTimeString()}`,
+                );
                 doc.text(`Location: ${ticket.event.location}`);
                 doc.moveDown();
                 doc.text(`Ticket Code: ${ticket.ticketCode}`);
-                doc.text(`Attendee: ${user.name || user.email}`); // Gunakan user dari order
+                doc.text(`Attendee: ${user.name || user.email}`);
                 doc.moveDown();
 
                 const qrCodePath = join(this.uploadsDir, ticket.qrCodeUrl);
@@ -143,16 +166,29 @@ export class TicketsService {
                 doc.end();
 
                 stream.on('finish', () => {
-                    this.logger.log(`Generated PDF for ticket ${ticket.ticketCode}`);
+                    this.logger.log(
+                        `Generated PDF for ticket ${ticket.ticketCode}`,
+                    );
                     resolve(pdfFileName);
                 });
-                stream.on('error', (error) => reject(error));
+
+                stream.on('error', (error: Error) => {
+                    this.logger.error(
+                        `Failed to write PDF for ticket ${ticket.ticketCode}:`,
+                        error,
+                    );
+                    reject(error);
+                });
             } catch (error) {
                 this.logger.error(
                     `Failed to generate PDF for ticket ${ticket.ticketCode}:`,
                     error,
                 );
-                reject(error);
+                reject(
+                    error instanceof Error
+                        ? error
+                        : new Error('Unknown error during PDF generation'),
+                );
             }
         });
     }
@@ -209,5 +245,49 @@ export class TicketsService {
         const timestamp = Date.now().toString(36);
         const randomPart = Math.random().toString(36).substring(2, 8);
         return `TKT-${timestamp}-${randomPart}`.toUpperCase();
+    }
+
+    async getTicketsByUserIdWithPagination(
+        userId: string,
+        page: number,
+        limit: number,
+    ): Promise<{
+        data: Ticket[];
+        meta: {
+            total: number;
+            page: number;
+            limit: number;
+            totalPages: number;
+        };
+    }> {
+        const skip = (page - 1) * limit;
+
+        const [tickets, total] = await this.ticketsRepo.findAndCount({
+            where: {
+                order: {
+                    user: {
+                        id: userId,
+                    },
+                },
+            },
+            relations: ['event', 'order', 'order.user'],
+            order: {
+                issuedAt: 'DESC',
+            },
+            skip,
+            take: limit,
+        });
+
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: tickets,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages,
+            },
+        };
     }
 }

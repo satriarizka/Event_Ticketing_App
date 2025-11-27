@@ -9,9 +9,9 @@ import { User } from '../../entities/user.entity';
 import { XenditService } from '../xendit/xendit.service';
 import { XenditInvoiceResponse } from '../xendit/xendit.types';
 import { v4 as uuidv4 } from 'uuid';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsService } from '../notification/notifications.service';
 import { isValidUUID } from 'src/common/utils/validation.utils';
-import { TicketsService } from '../tickets/tickets.service';
+import { TicketsService } from '../ticket/tickets.service';
 
 @Injectable()
 export class OrdersService {

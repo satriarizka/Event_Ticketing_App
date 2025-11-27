@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventCategory } from 'src/entities/event-category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
-import { UpdateCategoryDto } from 'src/modules/event-categories/dto/update-category.dto';
+import { UpdateCategoryDto } from 'src/modules/event-category/dto/update-category.dto';
 
 @Injectable()
 export class EventCategoryService {

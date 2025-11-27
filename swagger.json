@@ -15,15 +15,89 @@
         ]
       }
     },
-    "/api/users": {
+    "/api/users/me": {
       "get": {
-        "operationId": "UsersController_findAll",
+        "description": "Returns the authenticated user's profile data",
+        "operationId": "UsersController_getCurrentUser",
         "parameters": [],
         "responses": {
           "200": {
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get current user profile",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Allows authenticated user to update their own profile",
+        "operationId": "UsersController_updateCurrentUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update current user profile",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "UsersController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Users"
         ]
@@ -38,6 +112,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Users"
         ]
@@ -61,6 +140,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Users"
         ]
@@ -92,6 +176,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Users"
         ]
@@ -313,18 +402,47 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
       },
       "get": {
         "operationId": "EventsController_findAll",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -336,18 +454,38 @@
         "parameters": [
           {
             "name": "categoryId",
-            "required": true,
+            "required": false,
             "in": "query",
+            "description": "Filter by category UUID",
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "search",
-            "required": true,
+            "required": false,
             "in": "query",
+            "description": "Search in title and description",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "number"
             }
           }
         ],
@@ -356,6 +494,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -379,6 +522,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -402,6 +550,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -433,6 +586,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -454,6 +612,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -477,6 +640,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -628,16 +796,57 @@
     "/api/tickets": {
       "get": {
         "operationId": "TicketsController_findAll",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Tickets retrieved successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Ticket"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Ticket"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        },
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -649,7 +858,7 @@
             "bearer": []
           }
         ],
-        "summary": "Get all tickets for the current user",
+        "summary": "Get all tickets for the current user with pagination",
         "tags": [
           "Tickets"
         ]
@@ -694,6 +903,42 @@
         ]
       }
     },
+    "/api/tickets/scan/{ticketCode}": {
+      "get": {
+        "operationId": "TicketsController_scanTicket",
+        "parameters": [
+          {
+            "name": "ticketCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Scan a ticket by ticket code",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
     "/api/tickets/{id}": {
       "get": {
         "operationId": "TicketsController_findOne",
@@ -725,35 +970,6 @@
           }
         ],
         "summary": "Get a specific ticket by ID",
-        "tags": [
-          "Tickets"
-        ]
-      }
-    },
-    "/api/tickets/download/{ticketId}": {
-      "get": {
-        "operationId": "TicketsController_downloadTicket",
-        "parameters": [
-          {
-            "name": "ticketId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "PDF downloaded successfully"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Download a ticket PDF",
         "tags": [
           "Tickets"
         ]
@@ -817,6 +1033,35 @@
         ]
       }
     },
+    "/api/tickets/download/{ticketId}": {
+      "get": {
+        "operationId": "TicketsController_downloadTicket",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF downloaded successfully"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download a ticket PDF",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
     "/api/tickets/{id}/validate": {
       "post": {
         "operationId": "TicketsController_validateTicket",
@@ -858,7 +1103,7 @@
         "operationId": "TicketsController_checkTicket",
         "parameters": [
           {
-            "name": "path",
+            "name": "id",
             "required": true,
             "in": "path",
             "schema": {

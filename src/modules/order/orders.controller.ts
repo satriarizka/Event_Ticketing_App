@@ -20,7 +20,7 @@ import { User } from '../../entities/user.entity';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { XenditService } from '../xendit/xendit.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsService } from '../notification/notifications.service';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
